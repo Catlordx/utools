@@ -15,11 +15,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose  --release
+
     - name: Run tests
       run: cargo test --verbose
+
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
-        name: ax
-        path: /home/runner/work/ax/ax
+        name: ax-release
+        path: target/release/ax
