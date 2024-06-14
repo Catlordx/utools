@@ -1,83 +1,73 @@
-mod config;
-mod model;
-
-
-use crate::config::get_api_key;
-use reqwest::Client;
-use serde_json::{from_str, json, Value};
 use std::io;
 use std::io::Write;
-use tokio::time::{interval, Duration};
+
+use reqwest::Client;
+use serde_json::{json, Value};
+
+use ai::model::Message;
+
+use crate::ai::internal;
+use crate::ai::request::call_qwen_api;
+use config::Config;
+mod ai;
+mod config;
+mod errors;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut messages: Vec<model::Message> = Vec::new();
+    let mut messages: Vec<Message> = Vec::new();
     let client: Client = Client::new();
     let mut input = String::new();
-
+    let config = Config::init();
     loop {
-        print!(">>> ");
-        io::stdout().flush().expect("Failed to Flush");
-        input.clear();
-        if let Err(error) = io::stdin().read_line(&mut input) {
-            eprintln!("{}", error);
-        }
-        input = input.trim().to_string();
-        if input.eq("/bye") {
+        read_input(&mut input).expect("Failed to read input");
+        let trimmed_input = input.trim().to_string();
+        if trimmed_input.eq("/bye") {
             return Ok(());
         }
-        if input.eq("/new") {
+        if trimmed_input.eq("/new") {
             println!();
-            println!("以下是新对话");
+            println!("Here is the new dialog");
             messages.clear();
             continue;
         }
-        messages.push(model::Message::new_user(input.clone()));
-        // 构建请求体
+        messages.push(Message::new_user(trimmed_input.clone()));
+        // TODO Optimize this
         let body: Value = json!({
-        "model": "qwen-long",
-        "messages": messages,
+        "model": config.qwen.clone().unwrap_or_default().model,
+        "input":{
+            "messages": messages,
+        },
+        "parameters":{
+            "result_format":"message",
+        }
         });
 
-        let (tx_stop, mut rx_stop) = tokio::sync::mpsc::channel(1);
-        // async interval
+        let (tx_stop, rx_stop) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
-            let mut interval = interval(Duration::from_millis(100));
-            let mut idx = 0;
-            let spinner = ["-", "\\", "|", "/"];
-            loop {
-                tokio::select! {
-                    _ = interval.tick() =>{
-                        print!("等待响应中...{}",spinner[idx]);
-                        io::stdout().flush().unwrap();
-                        idx = (idx + 1)%spinner.len();
-                        print!("\r");
-                    },
-                    result = rx_stop.recv() =>{
-                        match result{
-                            Some(_) | None => break,
-                        }
-                    }
-                }
-            }
+            internal::wait_for_response(rx_stop).await;
         });
-        let response: reqwest::Response = client
-            .post(config::REQUEST_URL)
-            .header("Authorization", format!("Bearer {}", get_api_key()?))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-
-        let text = response.text().await?;
-        let json_value: Value = from_str(&text).unwrap();
-        let content = json_value["choices"][0]["message"]["content"].as_str();
-        if let Some(content) = content {
+        let content = call_qwen_api(
+            &client,
+            &body,
+            config.qwen.clone().unwrap_or_default().req_type,
+        )
+        .await;
+        if let Ok(content) = content {
             println!("{content}");
-            messages.push(model::Message::new_system(String::from(content)));
+            messages.push(Message::new_system(content));
             tx_stop.send(()).await.expect("Failed to send stop signal");
         } else {
             eprintln!("Failed to extract 'content' from the response");
         }
     }
+}
+
+fn read_input(input: &mut String) -> Result<(), io::Error> {
+    print!(">>> ");
+
+    input.clear();
+    io::stdout().flush()?;
+    io::stdin().read_line(input)?;
+    Ok(())
 }

@@ -1,3 +1,4 @@
+//! Customized error defined by the project
 use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum RequestError {
