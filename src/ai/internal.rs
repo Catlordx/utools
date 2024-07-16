@@ -1,6 +1,6 @@
-//! Print waiting message to the terminal
 use std::io;
 use std::io::Write;
+
 use tokio::time::{interval, Duration, Interval};
 
 pub async fn wait_for_response(mut rx_stop: tokio::sync::mpsc::Receiver<()>) {

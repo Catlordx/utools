@@ -5,10 +5,11 @@ use reqwest::Client;
 use serde_json::{json, Value};
 
 use ai::model::Message;
+use config::Config;
 
 use crate::ai::internal;
 use crate::ai::request::call_qwen_api;
-use config::Config;
+
 mod ai;
 mod config;
 mod errors;
@@ -50,13 +51,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let content = call_qwen_api(
             &client,
             &body,
-            config.qwen.clone().unwrap_or_default().req_type,
+            config.qwen.clone().unwrap_or_default().req_type, /* tokio::sync::mpsc::Sender<()> */
+            tx_stop.clone(),
         )
         .await;
         if let Ok(content) = content {
-            println!("{content}");
             messages.push(Message::new_system(content));
-            tx_stop.send(()).await.expect("Failed to send stop signal");
         } else {
             eprintln!("Failed to extract 'content' from the response");
         }

@@ -1,6 +1,7 @@
 //! Some project's configs
-use serde::Deserialize;
 use std::env;
+
+use serde::Deserialize;
 
 pub const REQUEST_URL: &str =
     "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
@@ -32,17 +33,14 @@ impl Default for Config {
 }
 impl Config {
     pub fn init() -> Self {
-        let user_profile = std::env::var("USERPROFILE").expect("USERPROFILE NOT FOUND");
+        let user_profile = env::var("USERPROFILE").expect("USERPROFILE NOT FOUND");
         let config_path = format!("{}\\ax.toml", user_profile);
         let toml_content =
             std::fs::read_to_string(config_path).expect("Unable to read the config file");
-        match toml::from_str::<Config>(&toml_content) {
-            Ok(config) => config,
-            Err(serde) => {
-                eprintln!("Faild to parse the config file: {}", serde);
-                Config::default()
-            }
-        }
+        toml::from_str::<Config>(&toml_content).unwrap_or_else(|serde| {
+            eprintln!("Failed to parse the config file: {}", serde);
+            Config::default()
+        })
     }
 }
 impl Default for Qwen {
